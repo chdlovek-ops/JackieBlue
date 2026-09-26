@@ -5,30 +5,61 @@ on:
 
 jobs:
   build:
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout JackieBlue
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Get EasyWinHax
+        shell: pwsh
+        run: |
+          if (Test-Path ".\EasyWinHax") {
+            Remove-Item ".\EasyWinHax" -Recurse -Force
+          }
+
+          git clone https://github.com/belazr/EasyWinHax.git EasyWinHax
+
+      - name: Fix JackieBlue paths
+        shell: pwsh
+        run: |
+          $project = Get-Content ".\JackieBlue.vcxproj" -Raw
+
+          $project = $project.Replace(
+            'EasyWinHax\headers',
+            'EasyWinHax\src'
+          )
+
+          Set-Content ".\JackieBlue.vcxproj" $project
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
       - name: Build EasyWinHax
-        run: msbuild .\EasyWinHax\EasyWinHax.vcxproj /m /p:Configuration=Release /p:Platform=x64
+        run: |
+          msbuild .\EasyWinHax\EasyWinHax.vcxproj /m /p:Configuration=Release /p:Platform=x64
 
       - name: Build JackieBlue
-        run: msbuild .\JackieBlue.vcxproj /m /p:Configuration=Release /p:Platform=x64
+        run: |
+          msbuild .\JackieBlue.vcxproj /m /p:Configuration=Release /p:Platform=x64
 
-      - name: Find output
+      - name: Collect JackieBlue
         shell: pwsh
-        run: Get-ChildItem -Recurse -Filter JackieBlue.exe
+        run: |
+          New-Item -ItemType Directory -Force ".\artifact"
+
+          $exe = Get-ChildItem -Path "." -Recurse -Filter "JackieBlue.exe" |
+            Select-Object -First 1
+
+          if (-not $exe) {
+            throw "JackieBlue.exe was not found"
+          }
+
+          Write-Host "Found: $($exe.FullName)"
+          Copy-Item $exe.FullName ".\artifact\JackieBlue.exe"
 
       - name: Upload JackieBlue
         uses: actions/upload-artifact@v4
         with:
           name: JackieBlue-x64
-          path: |
-            **/JackieBlue.exe
+          path: artifact/JackieBlue.exe
